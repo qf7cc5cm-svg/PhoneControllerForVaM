@@ -7,6 +7,9 @@ on:
 jobs:
   android-and-vam:
     runs-on: ubuntu-latest
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
     permissions:
       contents: read
     steps:
@@ -17,8 +20,10 @@ jobs:
           java-version: '17'
       - name: Install SDK platform
         run: |
-          yes | sdkmanager --licenses > /dev/null || true
-          sdkmanager --install "platforms;android-37" "build-tools;37.0.0"
+          SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -name sdkmanager -type f | head -n 1)
+          test -n "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
+          "$SDKMANAGER" --install "platforms;android-37" "build-tools;37.0.0"
       - name: Build Android app and run unit tests
         working-directory: AndroidAppSources
         run: |

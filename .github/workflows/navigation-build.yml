@@ -1,0 +1,65 @@
+name: Build phone camera navigation
+on:
+  push:
+    branches: [feature/phone-camera-navigation]
+  workflow_dispatch:
+
+jobs:
+  android-and-vam:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Install SDK platform
+        run: sdkmanager --install "platforms;android-37" "build-tools;37.0.0"
+      - name: Build Android app and run unit tests
+        working-directory: AndroidAppSources
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon :app:testDebugUnitTest :app:assembleDebug
+      - name: Package VaM plugin and APK
+        run: |
+          mkdir -p dist
+          cp AndroidAppSources/app/build/outputs/apk/debug/app-debug.apk dist/PhoneControllerNavigation-debug.apk
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          from zipfile import ZipFile, ZIP_DEFLATED
+          sources = [
+              "PhoneController.cslist",
+              "PhoneController.cs",
+              "TargetService.cs",
+              "PhoneCamera/CameraNavigation.cs",
+              "PhoneCamera/PhoneCamera.cs",
+              "PhoneCamera/PhoneCameraGrab.cs",
+              "PhoneCamera/JpegEncoder.cs",
+          ]
+          meta = {
+              "creatorName": "EugeneHere",
+              "packageName": "PhoneControllerNavigation",
+              "version": 1,
+              "description": "Phone camera orbit navigation patch. Requires matching Android APK.",
+              "licenseType": "LGPL-2.1",
+              "dependencies": {}
+          }
+          destination = Path("dist/EugeneHere.PhoneControllerNavigation.1.var")
+          with ZipFile(destination, "w", ZIP_DEFLATED) as archive:
+              archive.writestr("meta.json", json.dumps(meta, indent=2))
+              for relative in sources:
+                  archive.write(
+                      Path("VaMplugin") / relative,
+                      "Custom/Scripts/PhoneControllerForVaM/" + relative)
+          print("Packaged", destination)
+          PY
+      - name: Upload installable packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhoneControllerNavigation-installers
+          path: dist/*
+          if-no-files-found: error

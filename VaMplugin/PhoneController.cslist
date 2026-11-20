@@ -1,5 +1,6 @@
 PhoneCamera/JpegEncoder.cs
 PhoneCamera/PhoneCamera.cs
+PhoneCamera/CameraNavigation.cs
 PhoneCamera/PhoneCameraGrab.cs
 PhoneController.cs
 TargetService.cs

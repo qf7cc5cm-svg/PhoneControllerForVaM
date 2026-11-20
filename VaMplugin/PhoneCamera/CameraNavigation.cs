@@ -82,6 +82,8 @@ namespace MVRPlugin
                 frameObjectRequested = false;
                 ResetGrabView();
                 // Reuse exactly the existing framing / renderer-bounds implementation.
+                // Use the requested FOV when computing the initial fit.
+                capture.fieldOfView = Mathf.Clamp(command.fov, 10f, 110f);
                 FrameContainingObject(false, Quaternion.identity);
                 navigationPan = Vector3.zero;
                 navigationRotation = capture.transform.rotation;

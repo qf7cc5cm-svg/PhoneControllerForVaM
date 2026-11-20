@@ -379,7 +379,7 @@ public class CameraActivity extends AppCompatActivity {
    AtomicBoolean posting=new AtomicBoolean();
    AtomicLong decodeEpoch=new AtomicLong();
    AtomicLong lastDisplayedFrame = new AtomicLong();
-   long session=0,seq=0,lastHello=0,lastPose=0,lastCompleted=-1;int targetRevision=0,targetInstance=0;
+   long session=0,seq=0,navSeq=0,lastHello=0,lastPose=0,lastNavigation=0,lastCompleted=-1;int targetRevision=0,targetInstance=0;
    Map<Long,Parts> frames=new LinkedHashMap<>();byte[] receive=new byte[1500];
    message(g,"Finding VaM camera service");
    while(g==generation){long now=SystemClock.elapsedRealtime();
@@ -414,16 +414,17 @@ public class CameraActivity extends AppCompatActivity {
     }
     CameraPoseTracker.Sample pose=CameraPoseTracker.sample;
     CameraNavigationControl.Snapshot nav = navigationControl.snapshot();
-     if(target.target!=0&&!TargetConnection.pending()&&peer!=null&&nav.enabled&&now-lastPose>=33) {
+     if(target.target!=0&&!TargetConnection.pending()&&peer!=null&&now-lastNavigation>=33) {
       ByteBuffer n=ByteBuffer.allocate(52).order(ByteOrder.LITTLE_ENDIAN);
       n.put(new byte[]{80,67,78,49}).putInt((int)session)
-          .putInt(targetInstance).putInt(targetRevision).putInt((int)++seq)
-          .putInt(nav.frame).putInt(1 | (nav.follow ? 2 : 0))
+          .putInt(targetInstance).putInt(targetRevision).putInt((int)++navSeq)
+          .putInt(nav.frame).putInt(nav.enabled ? (1 | (nav.follow ? 2 : 0)) : 0)
           .putFloat(nav.yaw).putFloat(nav.pitch).putFloat(nav.panX).putFloat(nav.panY)
           .putFloat(nav.logDolly).putFloat(nav.fov);
       s.send(new DatagramPacket(n.array(), n.capacity(), peer));
-      lastPose=now;
-     } else if(target.target!=0&&!TargetConnection.pending()&&peer!=null&&!nav.enabled
+      lastNavigation=now;
+     }
+     if(target.target!=0&&!TargetConnection.pending()&&peer!=null&&!nav.enabled
          &&now-lastPose>=16&&pose!=null&&now-pose.sampledAt<200){
      ByteBuffer p = ByteBuffer.allocate(version == 4 ? 84 : grabProtocol ? 80 : 72).order(ByteOrder.LITTLE_ENDIAN);
      p.putInt(0x00504350 | (('0' + version) << 24)).putInt((int) session).putLong(++seq)
@@ -460,7 +461,7 @@ public class CameraActivity extends AppCompatActivity {
      if(!packet.getAddress().equals(target.address)||packet.getPort()!=AppPreferences.VAM_PORT)continue;
      if(Short.toUnsignedInt(b.getShort(8))!=streamWidth||Short.toUnsignedInt(b.getShort(10))!=streamHeight){message(g,"Server image size mismatch; update PhoneCamera plugin");continue;}
      InetSocketAddress from=(InetSocketAddress)packet.getSocketAddress();if(peer!=null&&!peer.equals(from))continue;peer=from;long id=Integer.toUnsignedLong(b.getInt(4));
-     if(session!=id){AppPreferences.connectionAndCamera(this).edit().putString(AppPreferences.LAST_SERVER,from.getAddress().getHostAddress()).apply();decodeEpoch.incrementAndGet();session=id;frames.clear();lastCompleted=-1;seq=0;referenceOffset++;lastDisplayedFrame.set(0);message(g,"Waiting for camera frames");}continue;
+     if(session!=id){AppPreferences.connectionAndCamera(this).edit().putString(AppPreferences.LAST_SERVER,from.getAddress().getHostAddress()).apply();decodeEpoch.incrementAndGet();session=id;frames.clear();lastCompleted=-1;seq=0;navSeq=0;lastNavigation=0;referenceOffset++;lastDisplayedFrame.set(0);message(g,"Waiting for camera frames");}continue;
     }
     int headerSize = grabProtocol ? 48 : 36;
     int chunk = 1200 - headerSize;

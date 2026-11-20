@@ -109,10 +109,13 @@ final class CameraNavigationControl implements View.OnTouchListener {
                 int remaining=event.getActionIndex()==0 ? 1 : 0;
                 prevX=event.getX(remaining);
                 prevY=event.getY(remaining);
+            } else if(event.getPointerCount()>=2) {
+                prevX=(event.getX(0)+event.getX(1))*.5f;
+                prevY=(event.getY(0)+event.getY(1))*.5f;
             } else {
                 prevX=event.getX(0); prevY=event.getY(0);
             }
-            prevSpan=event.getPointerCount()>=2 ? span(event) : 0f;
+            prevSpan=pointers>=2 ? span(event) : 0f;
             return true;
         }
         if(action!=MotionEvent.ACTION_MOVE) return true;

@@ -20,6 +20,7 @@ public class CameraActivity extends AppCompatActivity {
  private TargetBar targetBar;
  private CameraGrabControl grabControl;
  private GrabModeControl grabModeControl;
+ private CameraNavigationControl navigationControl;
  private volatile int grabMode = GrabModeControl.POS_RELAX;
  private boolean showGrab;
  private float grabRadius;
@@ -71,6 +72,7 @@ public class CameraActivity extends AppCompatActivity {
   view.setBackgroundColor(Color.BLACK);
   preview.addView(view, new FrameLayout.LayoutParams(-1, -1));
   grabControl = new CameraGrabControl(this, view, this::canStartGrab);
+  navigationControl = new CameraNavigationControl(this, view);
   preview.addView(grabControl.overlay, new FrameLayout.LayoutParams(-1, -1));
 
   scaleControl = new PositionScaleControl(this, scale -> {
@@ -102,6 +104,7 @@ public class CameraActivity extends AppCompatActivity {
   controls.setOrientation(LinearLayout.HORIZONTAL);
   controls.setBaselineAligned(false);
   controls.addView(scaleControl, new LinearLayout.LayoutParams(0, -2, 1));
+  controls.addView(navigationControl.toggle, new LinearLayout.LayoutParams(-2, CameraOverlayButton.dp(this, 48)));
   liveBadge = new TextView(this);
   liveBadge.setText(R.string.camera_live);
   liveBadge.setGravity(Gravity.CENTER);
@@ -117,6 +120,10 @@ public class CameraActivity extends AppCompatActivity {
   int margin = CameraOverlayButton.dp(this, 8);
   overlay.setMargins(margin, margin, margin, 0);
   preview.addView(controls, overlay);
+  FrameLayout.LayoutParams lensOverlay = new FrameLayout.LayoutParams(
+      -1, -2, Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+  lensOverlay.setMargins(margin, CameraOverlayButton.dp(this, 64), margin, 0);
+  preview.addView(navigationControl.lensControl, lensOverlay);
   targetBar = new TargetBar(this, false, this::refreshGrabTarget);
   targetBar.setFrameCurrentAction(this::requestFrame);
   LinearLayout bottomControls = new LinearLayout(this);
@@ -239,12 +246,13 @@ public class CameraActivity extends AppCompatActivity {
  private void requestFrame() {
   grabControl.clear();
   frameRequest.incrementAndGet();
+  navigationControl.frame();
  }
 
  private boolean canStartGrab() {
   TargetConnection.State target = TargetConnection.state;
   CameraPoseTracker.Sample pose = CameraPoseTracker.sample;
-  return activityResumed && !held && liveBadge.getVisibility() == View.VISIBLE
+  return activityResumed && !held && !navigationControl.isEnabled() && liveBadge.getVisibility() == View.VISIBLE
       && target != null && target.fresh() && target.target != 0 && target.cameraGrab
       && !target.loading && !TargetConnection.pending()
       && pose != null && SystemClock.elapsedRealtime() - pose.sampledAt < 200;
@@ -405,7 +413,18 @@ public class CameraActivity extends AppCompatActivity {
      lastHello = now;
     }
     CameraPoseTracker.Sample pose=CameraPoseTracker.sample;
-    if(target.target!=0&&!TargetConnection.pending()&&peer!=null&&now-lastPose>=16&&pose!=null&&now-pose.sampledAt<200){
+    CameraNavigationControl.Snapshot nav = navigationControl.snapshot();
+     if(target.target!=0&&!TargetConnection.pending()&&peer!=null&&nav.enabled&&now-lastPose>=33) {
+      ByteBuffer n=ByteBuffer.allocate(52).order(ByteOrder.LITTLE_ENDIAN);
+      n.put(new byte[]{80,67,78,49}).putInt((int)session)
+          .putInt(targetInstance).putInt(targetRevision).putInt((int)++seq)
+          .putInt(nav.frame).putInt(1 | (nav.follow ? 2 : 0))
+          .putFloat(nav.yaw).putFloat(nav.pitch).putFloat(nav.panX).putFloat(nav.panY)
+          .putFloat(nav.logDolly).putFloat(nav.fov);
+      s.send(new DatagramPacket(n.array(), n.capacity(), peer));
+      lastPose=now;
+     } else if(target.target!=0&&!TargetConnection.pending()&&peer!=null&&!nav.enabled
+         &&now-lastPose>=16&&pose!=null&&now-pose.sampledAt<200){
      ByteBuffer p = ByteBuffer.allocate(version == 4 ? 84 : grabProtocol ? 80 : 72).order(ByteOrder.LITTLE_ENDIAN);
      p.putInt(0x00504350 | (('0' + version) << 24)).putInt((int) session).putLong(++seq)
          .putLong(pose.reference + referenceOffset);

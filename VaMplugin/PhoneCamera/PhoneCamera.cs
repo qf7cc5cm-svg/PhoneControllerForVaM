@@ -24,7 +24,7 @@ namespace MVRPlugin
         private volatile UdpClient sharedCameraSocket;
         protected void SetCameraSocket(UdpClient socket) { sharedCameraSocket=socket; }
         public static bool IsCameraPacket(byte[] data) { return data!=null && (data.Length>=4 && data[0]==80 &&
-                ((data[1]==67 && ((data[2]==67 && data[3]==72) || (data[2]==80 && (data[3]==49 || data[3]==50 || data[3]==51 || data[3]==52)))) ||
+                ((data[1]==67 && ((data[2]==78 && data[3]==49) || (data[2]==67 && data[3]==72) || (data[2]==80 && (data[3]==49 || data[3]==50 || data[3]==51 || data[3]==52)))) ||
                  (data[1]==66 && data[2]==65 && data[3]==49))); }
         protected bool RouteCameraDatagram(byte[] data,IPEndPoint from)
         {
@@ -232,6 +232,7 @@ namespace MVRPlugin
         private PoseData ApplyPose()
         {
             if (targetAtom == null || SuperController.singleton.isLoading) return null;
+            if (ApplyNavigationPose()) return null;
             int requestedRevision = Interlocked.Exchange(ref worker.frameRequest, 0);
             if (requestedRevision == targetRevision) frameObjectRequested = true;
 
@@ -341,6 +342,7 @@ namespace MVRPlugin
             Quaternion rotation=HasTargetRotation(targetAtom) ? Quaternion.LookRotation(-front.forward,front.up) : capture.transform.rotation;
             if (alignHorizons) rotation = AlignHeading(phoneRotation, rotation) * phoneRotation;
             float distance=FrameDistance(bounds,rotation,capture.fieldOfView,capture.aspect,capture.nearClipPlane);
+            navigationFrameCenter = bounds.center;
             capture.transform.rotation=rotation;capture.transform.position=bounds.center-(rotation*Vector3.forward)*distance;
             Add("Framed target at 90% fit"+(landmarkCount>0 ? " using "+landmarkCount+" body landmarks" : " using renderer bounds")+"; current phone pose becomes the new reference.");
         }
@@ -494,6 +496,7 @@ namespace MVRPlugin
             public volatile string error;
             public readonly uint run = (uint)new System.Random().Next(1, int.MaxValue);
             private volatile bool stop; private long lastPose=-1;
+            private uint lastNavigationSequence;
             public int frameRequest; private int lastFrameRequest;
             private volatile int protocolVersion = 2;
             public bool grabProtocol { get { return protocolVersion >= 3; } }
@@ -566,6 +569,20 @@ namespace MVRPlugin
                         continue;
                     }
                     if(peer==null || !from.Equals(peer)) continue;
+                    if (data.Length == 52 && data[0]=='P' && data[1]=='C' && data[2]=='N' && data[3]=='1'
+                        && BitConverter.ToUInt32(data, 4) == run
+                        && BitConverter.ToInt32(data, 8) == owner.targetInstance
+                        && BitConverter.ToInt32(data, 12) == owner.targetRevision)
+                    {
+                        uint sequence = BitConverter.ToUInt32(data, 16);
+                        if (sequence > lastNavigationSequence)
+                        {
+                            lastNavigationSequence = sequence;
+                            owner.ReceiveNavigation(data, packet.received);
+                            heartbeat = Now();
+                        }
+                        continue;
+                    }
                     int poseSize = protocolVersion == 4 ? 84 : grabProtocol ? 80 : 72;
                     if(data.Length==poseSize && data[0]==80 && data[1]==67 && data[2]==80 && data[3]=='0'+protocolVersion && BitConverter.ToUInt32(data,4)==run)
                     {

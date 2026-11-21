@@ -63,9 +63,15 @@ jobs:
                       "Custom/Scripts/PhoneControllerForVaM/" + relative)
           print("Packaged", destination)
           PY
-      - name: Upload installable packages
+      - name: Upload Android APK
         uses: actions/upload-artifact@v4
         with:
-          name: PhoneControllerNavigation-installers
-          path: dist/*
+          name: PhoneControllerNavigation-Android-APK
+          path: dist/PhoneControllerNavigation-debug.apk
+          if-no-files-found: error
+      - name: Upload VaM plugin
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhoneControllerNavigation-VaM-VAR
+          path: dist/EugeneHere.PhoneControllerNavigation.1.var
           if-no-files-found: error
